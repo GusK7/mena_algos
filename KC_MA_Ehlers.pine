@@ -39,3 +39,123 @@ smoothing           = input("RMA", title="Smoothing", options=["RMA", "SMA", "EM
 reward              = input(4, title="ATR Reward", group="TP/SL")
 risk                = input(4, title="ATR Risk", group="TP/SL")
 
+
+//Candles Patterns
+bullEng             = (open[1] > close[1] ? close > open ? close >= open[1] ? close[1] >= open ? close - open > open[1] - close[1] ? true : false : false : false : false : false)
+bearEng             = (close[1] > open[1] ? open > close ? open >= close[1] ? open[1] >= close ? open - close > close[1] - open[1] ? true : false : false : false : false : false)
+
+bullHam             = (open[1] > close[1] ? close > open ? close <= open[1] ? close[1] <= open ? close - open < open[1] - close[1] ? true : false : false : false : false : false)
+bearHam             = (close[1] > open[1] ? open > close ? open <= close[1] ? open[1] <= close ? open - close < close[1] - open[1] ? true : false : false : false : false : false)
+
+bullCan             = bullEng or bullHam
+bearCan             = bearEng or bearHam
+
+//ATR Calc
+ma_function(source, lengthAtr) =>
+	if smoothing == "RMA"
+		rma(source, lengthAtr)
+	else
+		if smoothing == "SMA"
+			sma(source, lengthAtr)
+		else
+			if smoothing == "EMA"
+				ema(source, lengthAtr)
+			else
+				wma(source, lengthAtr)
+atrV = (ma_function(tr(true), lengthAtr))
+
+//KC Calc
+out = ema(src,lengthKc)
+esma(source, lengthKc)=>
+	s = sma(source, lengthKc)
+	e = ema(source, lengthKc)
+	exp ? e : s
+ma                  = esma(src, lengthKc)
+rangema             = BandsStyle == "True Range" ? tr(true) : BandsStyle == "Average True Range" ? atr(atrlength) : rma(high - low, length)
+upper               = ma + rangema * mult
+lower               = ma - rangema * mult
+
+//Ehlers
+fcyc                = SignalType  == "Full Cycle"
+hcyc                = SignalType == "Half Cycle"
+k_basis             = SignalSource == "K"
+d_basis             = SignalSource == "D"
+
+//EHLER FUNCTIONS
+EhlersSuperSmootherFilter(price, lower) =>
+	a1 = exp(-PI * sqrt(2) / lower)
+	coeff2 = 2 * a1 * cos(sqrt(2) * PI / lower)
+	coeff3 = - pow(a1,2)
+	coeff1 = 1 - coeff2 - coeff3
+	float filt = na
+	filt := coeff1 * (price + nz(price[1])) / 2 + coeff2 * nz(filt[1]) + coeff3 * nz(filt[2]) 
+	filt
+EhlersRoofingFilter(price, smoothed, upper, lower) =>  
+	alpha1 = (cos(sqrt(2) * PI / upper) + sin (sqrt(2) * PI / upper) - 1) / cos(sqrt(2) * PI / upper)
+	float highpass = na
+	highpass := pow(1 - alpha1 / 2, 2) * (price - 2 * nz(price[1]) + nz(price[2])) + 
+ 	            2 * (1 - alpha1) * nz(highpass[1]) - pow(1 - alpha1, 2) * nz(highpass[2])
+	smoothed ? EhlersSuperSmootherFilter(highpass, lower) : highpass
+EhlersStochastic(price, length, applyEhlerSmoothing, roofingBandUpper, roofingBandLower) =>
+	filt = EhlersRoofingFilter(price, applyEhlerSmoothing, roofingBandUpper, roofingBandLower)
+	highestP = highest(filt, length)
+	lowestP = lowest(filt, length)
+	iff ((highestP - lowestP) != 0, (filt - lowestP) / (highestP - lowestP),  0)
+//CALCULATION AND SIGNAL LOGIC
+k                   = EhlersSuperSmootherFilter(EhlersStochastic(src, length, applyDoubleSmoothing, roofingBandUpper, roofingBandLower), roofingBandLower)
+d                   = sma(k, lengthMA)
+mid                 = (overbought + oversold) / 2
+
+basis               = k_basis ? k : d_basis ? d : na
+up_touch            = basis > overbought
+dn_touch            = basis < oversold
+mid_touch           = cross(basis, mid)
+up_cycle            = crossunder(basis, overbought)
+dn_cycle            = crossover(basis, oversold)
+
+fullcycle_state     = fixnan(up_cycle ? 1 : dn_cycle ? -1 : na)
+halfcycle_state     = fixnan(up_cycle ? 1 : dn_cycle ? -1 : mid_touch ? 0 : na)
+fullcycle_overbought = up_touch and fullcycle_state[1] == -1
+fullcycle_oversold  = dn_touch and fullcycle_state[1] == 1
+halfcycle_overbought = up_touch and halfcycle_state[1] <= 0
+halfcycle_oversold  = dn_touch and halfcycle_state[1] >= 0
+
+overbought_signal   = fcyc ? fullcycle_overbought : hcyc ? halfcycle_overbought : false
+oversold_signal     = fcyc ? fullcycle_oversold : hcyc ? halfcycle_oversold : false
+
+//PLOTTING
+signal_c            = overbought_signal ? color.red : oversold_signal ? color.lime : na
+
+//Signal Conditions
+longS               = close>out and k<oversold and bullCan and (close[1]<upper)
+shortS              = close<out and k>overbought and bearCan and (close[1]>lower)
+
+//TP/SL
+longTp              = strategy.position_avg_price + (atrV*reward)
+longSl              = strategy.position_avg_price - (atrV*risk)
+shortTp             = strategy.position_avg_price - (atrV*reward)
+shortSl             = strategy.position_avg_price + (atrV*risk)
+
+//Strategy
+if(inDateRange)
+    strategy.entry("Long", strategy.long, when=longS)
+strategy.exit("Long Exit", "Long", stop=longSl, limit=longTp)
+
+if(inDateRange)
+    strategy.entry("Short", strategy.short, when=shortS)
+strategy.exit("Short Exit", "Short", stop=shortSl, limit=shortTp)
+
+
+//Plots
+//KC
+u                   = plot(upper, color=#2962FF, title="Upper")
+l                   = plot(lower, color=#2962FF, title="Lower")
+
+plotshape(longS, title="Long Buy Signal", location=location.belowbar, text="Buy", color=#00E600)
+plotshape(shortS, title="Short Sell Signal", location=location.abovebar, text="Sell", color=#FF0000) 
+//MA
+plot(out, color=color.blue, title="MA")
+plot(ma, color=#2962FF, title="Basis")
+fill(u, l, color=color.rgb(33, 150, 243, 95), title="Background")
+
+
