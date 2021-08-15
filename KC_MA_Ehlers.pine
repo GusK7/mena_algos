@@ -1,0 +1,41 @@
+//@version=4
+strategy(title="New Pullback Strategy", shorttitle="KC,MA,Ehlers",initial_capital=1000, currency=currency.GBP, 
+     default_qty_value=100, default_qty_type=strategy.percent_of_equity, 
+     commission_type=strategy.commission.percent, 
+     commission_value=0.01,  overlay=true)
+
+//Backtest Range
+i_startTime         = input(defval = timestamp("01 Jan 2017 12:00 +0000"), title = "Backtest Start", type = input.time)
+i_endTime           = input(defval = timestamp("01 Jan 2022 12:00 +0000"), title = "Backtest End", type = input.time)
+
+inDateRange         = time >= i_startTime and time <= i_endTime
+
+//KC
+lengthKc            = input(200, minval=1, group="Keltner Channel")
+mult                = input(2.0, "Multiplier", group="Keltner Channel")
+src                 = input(close, title="Source", group="Keltner Channel")
+exp                 = input(true, "Use Exponential MA", group="Keltner Channel")
+BandsStyle          = input("Average True Range", options = ["Average True Range", "True Range", "Range"], title="Bands Style", group="Keltner Channel")
+atrlength           = input(10, "ATR Length", group="Keltner Channel")
+
+
+//Ehlers
+PI                  = math.pi
+SignalType          = input("Full Cycle", title="Signal Type", options=["Full Cycle", "Half Cycle"], group="Ehlers Stochastic")
+
+SignalSource        = input("K", title="Signal Source", options=["K", "D"], group="Ehlers Stochastic")
+
+applyDoubleSmoothing = input(false, title="Double Smoothing", group="Ehlers Stochastic")
+length              = input (14, title="Stoch Length", group="Ehlers Stochastic")
+lengthMA            = input (3, title="Stoch MA Length", group="Ehlers Stochastic")
+overbought          = input (0.8, title="Overbought", group="Ehlers Stochastic")
+oversold            = input (0.2, title="Oversold", group="Ehlers Stochastic")
+roofingBandUpper    = input(48, title="Roofing Band Upper", group="Ehlers Stochastic")
+roofingBandLower    = input(10, title="Roofing Band Lower", group="Ehlers Stochastic")
+
+//ATR
+lengthAtr           = input(14, title="ATR Length", minval=1, group="ATR")
+smoothing           = input("RMA", title="Smoothing", options=["RMA", "SMA", "EMA", "WMA"], group="ATR")
+reward              = input(4, title="ATR Reward", group="TP/SL")
+risk                = input(4, title="ATR Risk", group="TP/SL")
+
